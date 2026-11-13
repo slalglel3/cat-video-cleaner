@@ -11,20 +11,18 @@ import {
   RotateCcw,
   Info,
   HelpCircle,
-  X,
-  Server,
-  CheckCircle2,
-  AlertCircle
+  X
 } from 'lucide-react';
 import './mobile-base.css';
 
+const DEFAULT_SERVER_URL = 'https://cleaner.donagy.pro';
+
 export function App() {
-  const [serverUrl, setServerUrl] = useState<string>('https://cleaner.donagy.pro');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [rawVideoUrl, setRawVideoUrl] = useState<string | null>(null);
   const [cleanVideoUrl, setCleanVideoUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isCleanMode, setIsCleanMode] = useState<boolean>(false); // 변환 전에는 원본, 변환 후에는 클린이 기본
+  const [isCleanMode, setIsCleanMode] = useState<boolean>(false);
 
   // 처리 상태
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -34,7 +32,6 @@ export function App() {
   // 모달
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showInfo, setShowInfo] = useState<boolean>(false);
-  const [serverStatus, setServerStatus] = useState<'unchecked' | 'ok' | 'error'>('unchecked');
 
   // 미세 튜닝 옵션
   const [vocalSuppression, setVocalSuppression] = useState<number>(1.0);
@@ -43,7 +40,7 @@ export function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 하드웨어 뒤로가기 버튼 연동
+  // 안드로이드 하드웨어 뒤로가기 버튼
   useEffect(() => {
     let handler: { remove: () => Promise<void> } | null = null;
     try {
@@ -67,19 +64,14 @@ export function App() {
     };
   }, [showSettings, showInfo, videoFile]);
 
-  // 서버 연결 확인
-  const checkServerHealth = async (urlToCheck: string) => {
-    try {
-      setServerStatus('unchecked');
-      const cleanUrl = urlToCheck.replace(/\/+$/, '');
-      const res = await fetch(`${cleanUrl}/health`, { method: 'GET' });
-      if (res.ok) {
-        setServerStatus('ok');
-      } else {
-        setServerStatus('error');
+  // 비디오 첫 프레임 강제 디코딩
+  const handleLoadedData = () => {
+    if (videoRef.current) {
+      try {
+        videoRef.current.currentTime = 0.001;
+      } catch {
+        // ignore
       }
-    } catch {
-      setServerStatus('error');
     }
   };
 
@@ -99,7 +91,7 @@ export function App() {
     setIsPlaying(false);
   };
 
-  // AI 노이즈 제거 요청 (서버 Demucs 파이프라인)
+  // AI 노이즈 & 노래 제거 요청
   const handleStartAiClean = async () => {
     if (!videoFile) return;
 
@@ -112,10 +104,9 @@ export function App() {
       formData.append('vocal_suppression', vocalSuppression.toString());
       formData.append('foley_boost', foleyBoost.toString());
 
-      setProcessStatus('Demucs AI로 사람 목소리 및 TV 소리 분리 중... (약 15~20초)');
+      setProcessStatus('사람 목소리와 배경 음악을 분리하고 있습니다...');
 
-      const cleanUrl = serverUrl.replace(/\/+$/, '');
-      const response = await fetch(`${cleanUrl}/api/clean`, {
+      const response = await fetch(`${DEFAULT_SERVER_URL}/api/clean`, {
         method: 'POST',
         body: formData,
       });
@@ -125,7 +116,7 @@ export function App() {
         throw new Error(errorText || '서버 처리 실패');
       }
 
-      setProcessStatus('클린 동영상 수신 중...');
+      setProcessStatus('클린 동영상 다운로드 중...');
       const blob = await response.blob();
       const newCleanUrl = URL.createObjectURL(blob);
 
@@ -135,23 +126,23 @@ export function App() {
       setIsProcessing(false);
       setProcessStatus('');
 
-      // 비디오 엘리먼트 즉시 새 클린 영상으로 교체
+      // 요구사항 4: 수신 시 첫 프레임 띄우고 재생 버튼(정지) 상태로 대기
+      setIsPlaying(false);
       if (videoRef.current) {
         videoRef.current.src = newCleanUrl;
         videoRef.current.load();
-        videoRef.current.play().catch(() => {});
-        setIsPlaying(true);
+        videoRef.current.currentTime = 0.001;
       }
     } catch (err: unknown) {
       console.error('AI Clean Error:', err);
       setIsProcessing(false);
       const msg = err instanceof Error ? err.message : String(err);
-      alert(`노이즈 제거에 실패했습니다.\n사유: ${msg}\n\n서버(${serverUrl}) 연결 상태와 Cloudflare 설정을 확인해주세요.`);
+      alert(`노이즈 제거에 실패했습니다.\n사유: ${msg}\n\n서버 상태를 확인해주세요.`);
     }
   };
 
-  // A/B 모드 전환 (클린 영상 vs 원본 영상)
-  const handleSwitchMode = (targetClean: boolean) => {
+  // 요구사항 5: A/B 모드 전환 시 비디오와 버튼 재생 상태 완벽 동기화
+  const handleSwitchMode = async (targetClean: boolean) => {
     if (!videoRef.current) return;
     const curTime = videoRef.current.currentTime;
     const wasPlaying = !videoRef.current.paused;
@@ -162,7 +153,14 @@ export function App() {
       videoRef.current.src = targetUrl;
       videoRef.current.currentTime = curTime;
       if (wasPlaying) {
-        videoRef.current.play().catch(() => {});
+        try {
+          await videoRef.current.play();
+          setIsPlaying(true);
+        } catch {
+          setIsPlaying(false);
+        }
+      } else {
+        setIsPlaying(false);
       }
     }
   };
@@ -173,12 +171,14 @@ export function App() {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
-      setIsPlaying(true);
+      videoRef.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        setIsPlaying(false);
+      });
     }
   };
 
-  // 클린 동영상 폰 저장
   const handleDownloadClean = () => {
     if (!cleanVideoUrl) return;
     const a = document.createElement('a');
@@ -211,7 +211,7 @@ export function App() {
           </div>
           <div>
             <h1 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0, color: '#ffffff' }}>CatCleaner</h1>
-            <p style={{ fontSize: '11px', margin: 0, color: '#94a3b8' }}>Demucs AI 고양이 소리 보존 & TV 음성 제거</p>
+            <p style={{ fontSize: '11px', margin: 0, color: '#94a3b8' }}>고양이 소리 보존 & 말소리·노래 제거</p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
@@ -239,7 +239,7 @@ export function App() {
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>고양이 동영상 선택</h2>
             <p style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '280px', lineHeight: 1.5, marginBottom: '24px' }}>
-              배경에 TV 말소리나 방송 음향이 들리는 동영상을 선택하세요. AI가 사람 소리만 깨끗이 지워드립니다.
+              배경에 TV 말소리나 노래 소리가 섞인 동영상을 선택하세요. AI가 사람 소리와 음악을 깨끗이 지워드립니다.
             </p>
             <input
               type="file"
@@ -265,15 +265,18 @@ export function App() {
                 src={(isCleanMode ? cleanVideoUrl : rawVideoUrl) || undefined}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 playsInline
+                preload="auto"
                 loop
+                onLoadedData={handleLoadedData}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
               />
 
               {/* 상태 뱃지 */}
               <div style={{ position: 'absolute', top: '12px', left: '12px', padding: '6px 12px', borderRadius: '20px', backgroundColor: isCleanMode ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)', color: '#fff', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
                 {isCleanMode ? <Sparkles size={14} /> : <Volume2 size={14} />}
-                {isCleanMode ? '✨ 클린 모드 (TV 제거됨)' : '🔊 원본 동영상'}
+                {isCleanMode ? '✨ 클린 모드 (TV·음악 제거됨)' : '🔊 원본 동영상'}
               </div>
 
               {/* 재생/일시정지 버튼 */}
@@ -285,7 +288,7 @@ export function App() {
               </button>
             </div>
 
-            {/* 변환 완료 후 A/B 토글 스위치 */}
+            {/* A/B 비교 토글 버튼 */}
             {hasProcessed && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', backgroundColor: '#1e293b', padding: '6px', borderRadius: '14px' }}>
                 <button
@@ -329,7 +332,7 @@ export function App() {
               </div>
             )}
 
-            {/* 처리 전: AI 변환 시작 버튼 */}
+            {/* 버튼 그룹 */}
             {!hasProcessed ? (
               <button
                 onClick={handleStartAiClean}
@@ -349,10 +352,9 @@ export function App() {
                 }}
               >
                 <Sparkles size={20} />
-                AI 노이즈 제거 시작 (Demucs)
+                AI 노이즈 & 노래 제거 시작
               </button>
             ) : (
-              /* 처리 후: 클린 동영상 저장 버튼 */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button
                   onClick={handleDownloadClean}
@@ -398,63 +400,35 @@ export function App() {
         )}
       </div>
 
-      {/* 처리 중 오버레이 */}
+      {/* 요구사항 3: 체다캠 등 불필요 문구 완전 삭제된 심플 로딩창 */}
       {isProcessing && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
-          <div style={{ width: '100%', maxWidth: '320px', backgroundColor: '#1e293b', padding: '24px', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'center' }}>
+          <div style={{ width: '100%', maxWidth: '320px', backgroundColor: '#1e293b', padding: '26px 20px', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'center' }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', color: '#f59e0b' }}>
-              <Sparkles size={28} className="animate-spin" />
+              <Sparkles size={28} />
             </div>
             <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0 }}>AI 노이즈 제거 진행 중</h3>
             <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0, lineHeight: 1.5 }}>{processStatus}</p>
-            <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
-              체다캠에 영향이 없도록 CPU 2코어로 안전하게 격리 연산됩니다.
-            </p>
+            <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>잠시만 기다려 주세요 (약 15~20초 소요)</p>
           </div>
         </div>
       )}
 
-      {/* 설정 모달 */}
+      {/* 요구사항 6: 실제 사용자용 음향 설정만 남긴 깔끔한 설정 모달 */}
       {showSettings && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 90 }}>
-          <div style={{ backgroundColor: '#1e293b', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '80vh', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: '#1e293b', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px', maxHeight: '80vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0 }}>서버 및 음향 설정</h3>
+              <h3 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0 }}>음향 필터 세부 설정</h3>
               <button onClick={() => setShowSettings(false)} style={{ color: '#94a3b8' }}>
                 <X size={20} />
               </button>
             </div>
 
-            {/* 서버 주소 입력 */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Server size={14} />
-                  AI 백엔드 서버 주소
-                </label>
-                {serverStatus === 'ok' && <span style={{ fontSize: '11px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '2px' }}><CheckCircle2 size={12} /> 연결됨</span>}
-                {serverStatus === 'error' && <span style={{ fontSize: '11px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '2px' }}><AlertCircle size={12} /> 미연결</span>}
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  value={serverUrl}
-                  onChange={(e) => { setServerUrl(e.target.value); setServerStatus('unchecked'); }}
-                  style={{ flex: 1, padding: '10px 12px', borderRadius: '10px', backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', fontSize: '13px' }}
-                />
-                <button
-                  onClick={() => checkServerHealth(serverUrl)}
-                  style={{ padding: '10px 14px', borderRadius: '10px', backgroundColor: '#334155', color: '#cbd5e1', fontSize: '12px', fontWeight: 'bold' }}
-                >
-                  연결 확인
-                </button>
-              </div>
-            </div>
-
-            {/* 사람 목소리 제거 강도 */}
+            {/* 사람 목소리 & 노래 제거 강도 */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
-                <span style={{ color: '#cbd5e1' }}>사람 목소리(TV) 제거율</span>
+                <span style={{ color: '#cbd5e1' }}>사람 목소리 & 노래 제거율</span>
                 <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{Math.round(vocalSuppression * 100)}%</span>
               </div>
               <input
@@ -466,6 +440,7 @@ export function App() {
                 onChange={(e) => setVocalSuppression(parseFloat(e.target.value))}
                 style={{ width: '100%', accentColor: '#f59e0b' }}
               />
+              <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0 0' }}>100% 설정 시 TV 대사 및 배경음악 멜로디가 완전 소거됩니다.</p>
             </div>
 
             {/* 고양이 발소리 부스트 */}
@@ -483,13 +458,14 @@ export function App() {
                 onChange={(e) => setFoleyBoost(parseFloat(e.target.value))}
                 style={{ width: '100%', accentColor: '#f59e0b' }}
               />
+              <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0 0' }}>상자 긁는 소리와 바스락거림을 선명하게 키웁니다.</p>
             </div>
 
             <button
               onClick={() => setShowSettings(false)}
-              style={{ padding: '12px', borderRadius: '12px', backgroundColor: '#f59e0b', color: '#000', fontWeight: 'bold', fontSize: '14px' }}
+              style={{ padding: '12px', borderRadius: '12px', backgroundColor: '#f59e0b', color: '#000', fontWeight: 'bold', fontSize: '14px', marginTop: '6px' }}
             >
-              설정 저장
+              설정 완료
             </button>
           </div>
         </div>
@@ -510,12 +486,12 @@ export function App() {
             </div>
             <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <p style={{ margin: 0 }}>
-                <strong>🐾 개인 홈서버 연동 AI 엔진</strong><br />
-                외부 유료 클라우드가 아닌, 개인 홈서버(`cleaner.donagy.pro`)에 탑재된 최신 Meta Demucs v4 음원 분리 AI를 사용합니다.
+                <strong>🐾 고양이 전용 AI 음향 복원 엔진</strong><br />
+                최신 딥러닝 신경망을 통해 TV 대사와 배경음악은 완벽히 제거하고, 고양이의 발소리·상자 긁는 소리·바스락거림만 생생하게 살려냅니다.
               </p>
               <p style={{ margin: 0 }}>
-                <strong>🔒 완벽한 사생활 보호 & 격리 연산</strong><br />
-                영상은 AI 연산 직후 서버에서 즉시 영구 삭제되며, 홈캠(체다캠) 스트리밍에 영향이 없도록 CPU 2코어로 격리 연산됩니다.
+                <strong>🔒 안전한 개인 홈서버 처리</strong><br />
+                외부 타사 클라우드로 전송되지 않으며, 변환 직후 서버의 임시 파일은 즉시 영구 삭제됩니다.
               </p>
             </div>
             <button
