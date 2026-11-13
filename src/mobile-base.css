@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Mobile APK Standard Base CSS
+   - 뷰포트 확대/팬/바운스 스크롤 원천 차단
+   - 상단 상태바/노치 & 하단 홈 제스처 바 안전 여백 보장
+   - SVG 및 Flexbox 컨테이너 팽창 폭발 방지
+   ========================================================================== */
+
+/* 1. Global Reset & Box Sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 2. 뷰포트 고정 및 터치 제스처 방어 (화면 움직임 원천 차단) */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  background-color: #0f172a;
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 3. 스마트폰 Safe Area 안전 영역 */
+.safe-container {
+  padding-top: max(env(safe-area-inset-top, 0px), 16px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+  padding-left: max(env(safe-area-inset-left, 0px), 16px);
+  padding-right: max(env(safe-area-inset-right, 0px), 16px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 4. 스크롤 가능한 본문 영역 */
+.scroll-content {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 24px;
+}
+
+/* 5. 버튼 기본 리셋 */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* 6. 스크롤바 커스텀 */
+.scroll-content::-webkit-scrollbar {
+  width: 4px;
+}
+.scroll-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
