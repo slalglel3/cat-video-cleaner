@@ -35,5 +35,5 @@
         </provider>
     </application>
 
-    <!-- 100% 오프라인 동작: 인터넷 및 불필요 권한 전면 배제 -->
+    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

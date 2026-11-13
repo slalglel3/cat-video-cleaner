@@ -6,11 +6,10 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    cleartext: false,     // 평문 HTTP 통신 완전 차단
-    allowNavigation: [], // 외부 임의 도메인 탐색 원천 차단
+    cleartext: true,
   },
   android: {
-    allowMixedContent: false,
+    allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },

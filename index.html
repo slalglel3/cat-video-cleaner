@@ -7,10 +7,9 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <!-- 100% 오프라인 독립 구동 및 엄격한 보안을 위한 CSP 헤더 (외부 통신 전면 거부) -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; media-src 'self' blob: data:; object-src 'none'; frame-src 'none'; base-uri 'self';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cleaner.donagy.pro https://*.donagy.pro http://*:8445; media-src 'self' blob: data:; object-src 'none'; frame-src 'none'; base-uri 'self';"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
